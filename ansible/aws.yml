@@ -1,0 +1,99 @@
+# Setup AWS to support magic lanterns
+---
+- hosts: localhost
+  vars_files:
+    - answerfile.yml
+
+  tasks:
+    - name: Create IAM user
+      iam:
+        profile: "{{profile}}"
+        iam_type: user
+        name: "{{iam_user}}"
+        state: present
+        access_key_state: create
+        
+    - name: Grant user permissions
+      iam_policy:
+        profile: "{{profile}}"
+        iam_type: user
+        iam_name: "{{iam_user}}"
+        state: present
+        policy_name: "SNS_SQS"
+        # This policy allows the lantern user to publish to any SNS topic, and send, recieve, and delete rights on
+        # any SQS in the account.
+        # You may want to lock this down further if this account has other SNS / SQS resources.
+        policy_document: policy.json 
+
+    - name: Create SQS lantern queue 1
+      sqs_queue:
+        profile: "{{profile}}"
+        region: "{{region}}"
+        name: "{{sqs_queue_1}}"
+        receive_message_wait_time: 20
+        policy: '{
+                  "Version": "2012-10-17",
+                  "Statement": [
+                    {
+                      "Sid": "1",
+                      "Effect": "Allow",
+                      "Principal": "*",
+                      "Action": "SQS:SendMessage",
+                      "Resource": "arn:aws:sqs:{{region}}:{{account_id}}:{{sqs_queue_1}}",
+                      "Condition": {
+                        "ArnEquals": {
+                          "aws:SourceArn": "arn:aws:sns:{{region}}:{{account_id}}:{{sns_topic}}"
+                        }
+                      }
+                    }
+                  ]
+                }'
+
+    - name: Create SQS lantern queue 2
+      sqs_queue:
+        profile: "{{profile}}"
+        region: "{{region}}"
+        name: "{{sqs_queue_2}}"
+        receive_message_wait_time: 20
+        policy: '{
+                  "Version": "2012-10-17",
+                  "Statement": [
+                    {
+                      "Sid": "1",
+                      "Effect": "Allow",
+                      "Principal": "*",
+                      "Action": "SQS:SendMessage",
+                      "Resource": "arn:aws:sqs:{{region}}:{{account_id}}:{{sqs_queue_2}}",
+                      "Condition": {
+                        "ArnEquals": {
+                          "aws:SourceArn": "arn:aws:sns:{{region}}:{{account_id}}:{{sns_topic}}"
+                        }
+                      }
+                    }
+                  ]
+                }'
+
+    - name: Create SNS topic
+      sns_topic:
+        profile: "{{ profile }}"
+        region: "{{ region }}"
+        name: "{{ sns_topic }}"
+        state: present
+
+    # Due to a bug in Ansible (https://github.com/ansible/ansible/issues/29102) we'll need to do this as a command
+    - name: Subscribe SNS to lantern queue 1
+      command: aws --profile "{{profile}}" sns subscribe --topic-arn "arn:aws:sns:{{region}}:{{account_id}}:{{sns_topic}}" --protocol sqs --notification-endpoint "arn:aws:sqs:{{region}}:{{account_id}}:{{sqs_queue_1}}"
+
+    - name: Subscribe SNS to lantern queue 2
+      command: aws --profile "{{profile}}" sns subscribe --topic-arn "arn:aws:sns:{{region}}:{{account_id}}:{{sns_topic}}" --protocol sqs --notification-endpoint "arn:aws:sqs:{{region}}:{{account_id}}:{{sqs_queue_2}}"
+
+
+    # Print PM2 env config
+    - debug:
+        msg: "SNS_TOPIC: arn:aws:sns:{{region}}:{{account_id}}:{{sns_topic}}"
+
+    - debug:
+        msg: "Lantern 1 SQS_QUEUE_URL: https://sqs.{{region}}.amazonaws.com/{{account_id}}/{{sqs_queue_1}}"
+
+    - debug:
+        msg: "Lantern 2 SQS_QUEUE_URL: https://sqs.{{region}}.amazonaws.com/{{account_id}}/{{sqs_queue_2}}"   

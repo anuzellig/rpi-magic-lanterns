@@ -1,0 +1,17 @@
+# Answerfile referenced by with aws.yml and destroy.yml
+
+# This references the AWS access and secret keys in your aws credentials file using profiles:
+# aws configure --profile "test-account"
+
+profile:       "magic-lanterns"
+region:        "us-east-1"
+# Replace with your AWS account ID
+account_id:    "XXXXXXXXXXXX"
+
+# Name of the IAM user to create. This user will only have rights to publish to the SNS topic
+# and pull from the SQS queues
+iam_user:      "lantern-user"
+
+sns_topic:     "SNS-Magic-Lanterns"
+sqs_queue_1:   "SQS-Lantern-1"
+sqs_queue_2:   "SQS-Lantern-2"
